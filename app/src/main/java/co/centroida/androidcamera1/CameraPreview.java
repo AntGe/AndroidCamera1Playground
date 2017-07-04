@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.Camera;
@@ -54,22 +55,13 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
         mCamera = camera;
         mSupportedPreviewSizes = mCamera.getParameters().getSupportedPictureSizes();
 
-       /* mDetector =
+        mDetector =
                 new BarcodeDetector.Builder(context)
                         .setBarcodeFormats(Barcode.DATA_MATRIX | Barcode.QR_CODE)
                         .build();
         if(!mDetector.isOperational()){
             Log.d(TAG, "onResume: Could not set up the detector!");
-            return;
-        }*/
-       /* mDetector =
-                new BarcodeDetector.Builder(context)
-                        .setBarcodeFormats(Barcode.DATA_MATRIX | Barcode.QR_CODE)
-                        .build();
-        if(!mDetector.isOperational()){
-            Log.d("Detector", "onResume: Could not set up the detector!");
-            return;
-        }*/
+        }
         // Install a SurfaceHolder.Callback so we get notified when the
         // underlying surface is created and destroyed.
         mHolder = getHolder();
@@ -109,6 +101,11 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
 
     public void surfaceDestroyed(SurfaceHolder holder) {
         // empty. Take care of releasing the Camera preview in your activity.
+        if (mCamera != null) {
+            mCamera.stopPreview();
+            mCamera.release();
+            mCamera = null;
+        }
     }
 
     public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
@@ -140,27 +137,31 @@ public class CameraPreview extends SurfaceView implements SurfaceHolder.Callback
             mCamera.setPreviewCallback(new Camera.PreviewCallback() {
                 @Override
                 public void onPreviewFrame(final byte[] data, Camera camera) {
-                    Log.d(TAG, "onPreviewFrame: ");
-                    if (!processing){
-                        processing = true;
-                        backgroundHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                Log.d(TAG, "INTHEHANDLER");
-                                Camera.Parameters parameters = mCamera.getParameters();
-                                int width = parameters.getPreviewSize().width;
-                                int height = parameters.getPreviewSize().height;
+                    if (camera != null){
+                        Log.d(TAG, "onPreviewFrame: ");
+                        if (!processing){
+                            processing = true;
+                            backgroundHandler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    Log.d(TAG, "INTHEHANDLER");
+                                    Camera.Parameters parameters = mCamera.getParameters();
+                                    int width = parameters.getPreviewSize().width;
+                                    int height = parameters.getPreviewSize().height;
 
-                                YuvImage yuv = new YuvImage(data, parameters.getPreviewFormat(), width, height, null);
+                                    YuvImage yuv = new YuvImage(data, parameters.getPreviewFormat(), width, height, null);
 
-                                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                                yuv.compressToJpeg(new Rect(0, 0, width, height), 50, out);
+                                    ByteArrayOutputStream out = new ByteArrayOutputStream();
+                                    yuv.compressToJpeg(new Rect(0, 0, width, height), 50, out);
 
-                                byte[] bytes = out.toByteArray();
-                                final Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-                                processing = false;
-                            }
-                        });
+                                    byte[] bytes = out.toByteArray();
+                                    final Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                                    Frame frame = new Frame.Builder().setBitmap(bitmap).build();
+                                    SparseArray<Barcode> barcodes = mDetector.detect(frame);
+                                    processing = false;
+                                }
+                            });
+                        }
                     }
                 }
             });
